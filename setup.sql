@@ -399,6 +399,7 @@ BEGIN
     RETURN json_build_object(
         'email', v_user_email,
         'revert_token', v_revert_token,
+        'old_username', v_old_username,
         'new_username', v_pending.new_username
     );
 END;
