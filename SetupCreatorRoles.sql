@@ -13,9 +13,9 @@ CREATE TABLE IF NOT EXISTS public.creator_applications (
 
 ALTER TABLE public.creator_applications ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can insert their own application" ON public.creator_applications FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Users can view their own application" ON public.creator_applications FOR SELECT USING (auth.uid() = user_id OR (SELECT username FROM public.profiles WHERE id = auth.uid()) = 'Login31');
-CREATE POLICY "Only Login31 can delete applications" ON public.creator_applications FOR DELETE USING ((SELECT username FROM public.profiles WHERE id = auth.uid()) = 'Login31');
-CREATE POLICY "Only Login31 can update applications" ON public.creator_applications FOR UPDATE USING ((SELECT username FROM public.profiles WHERE id = auth.uid()) = 'Login31');
+CREATE POLICY "Users can view their own application" ON public.creator_applications FOR SELECT USING (auth.uid() = user_id OR (SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) = true);
+CREATE POLICY "Only Login31 can delete applications" ON public.creator_applications FOR DELETE USING ((SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) = true);
+CREATE POLICY "Only Login31 can update applications" ON public.creator_applications FOR UPDATE USING ((SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) = true);
 
 -- Support info table for creators
 CREATE TABLE IF NOT EXISTS public.creator_support (
@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS public.creator_support (
 );
 ALTER TABLE public.creator_support ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view creator support" ON public.creator_support FOR SELECT USING (true);
-CREATE POLICY "Creators can insert their own support info if they are creator" ON public.creator_support FOR INSERT WITH CHECK (auth.uid() = user_id AND ((SELECT is_content_creator FROM public.profiles WHERE id = auth.uid()) = true OR (SELECT username FROM public.profiles WHERE id = auth.uid()) = 'Login31'));
-CREATE POLICY "Creators can update their support info" ON public.creator_support FOR UPDATE USING (auth.uid() = user_id AND ((SELECT is_content_creator FROM public.profiles WHERE id = auth.uid()) = true OR (SELECT username FROM public.profiles WHERE id = auth.uid()) = 'Login31'));
+CREATE POLICY "Creators can insert their own support info if they are creator" ON public.creator_support FOR INSERT WITH CHECK (auth.uid() = user_id AND ((SELECT is_content_creator FROM public.profiles WHERE id = auth.uid()) = true OR (SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) = true));
+CREATE POLICY "Creators can update their support info" ON public.creator_support FOR UPDATE USING (auth.uid() = user_id AND ((SELECT is_content_creator FROM public.profiles WHERE id = auth.uid()) = true OR (SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) = true));
 
 -- Featured Roulettes table
 CREATE TABLE IF NOT EXISTS public.featured_roulettes (
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS public.featured_roulettes (
 );
 ALTER TABLE public.featured_roulettes ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view featured roulettes" ON public.featured_roulettes FOR SELECT USING (true);
-CREATE POLICY "Creators can manage their roulettes" ON public.featured_roulettes FOR ALL USING ((auth.uid() = user_id AND ((SELECT is_content_creator FROM public.profiles WHERE id = auth.uid()) = true)) OR (SELECT username FROM public.profiles WHERE id = auth.uid()) = 'Login31');
+CREATE POLICY "Creators can manage their roulettes" ON public.featured_roulettes FOR ALL USING ((auth.uid() = user_id AND ((SELECT is_content_creator FROM public.profiles WHERE id = auth.uid()) = true)) OR (SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) = true);
 
 CREATE OR REPLACE FUNCTION increment_roulette_play(p_id UUID) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
@@ -69,8 +69,8 @@ $$;
 -- A function to process application
 CREATE OR REPLACE FUNCTION accept_creator_application(p_user_id UUID) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-    IF (SELECT username FROM public.profiles WHERE id = auth.uid()) != 'Login31' THEN
-        RAISE EXCEPTION 'Only Login31 can accept applications';
+    IF (SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) != true THEN
+        RAISE EXCEPTION 'Only The Creator can accept applications';
     END IF;
     
     UPDATE public.profiles SET is_content_creator = true WHERE id = p_user_id;
@@ -80,8 +80,8 @@ $$;
 
 CREATE OR REPLACE FUNCTION deny_creator_application(p_user_id UUID) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-    IF (SELECT username FROM public.profiles WHERE id = auth.uid()) != 'Login31' THEN
-        RAISE EXCEPTION 'Only Login31 can deny applications';
+    IF (SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) != true THEN
+        RAISE EXCEPTION 'Only The Creator can deny applications';
     END IF;
     
     DELETE FROM public.creator_applications WHERE user_id = p_user_id;
@@ -90,8 +90,8 @@ $$;
 
 CREATE OR REPLACE FUNCTION set_content_creator(p_user_id UUID, p_status BOOLEAN) RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-    IF (SELECT username FROM public.profiles WHERE id = auth.uid()) != 'Login31' THEN
-        RAISE EXCEPTION 'Only Login31 can set Content Creator rank';
+    IF (SELECT is_the_creator FROM public.profiles WHERE id = auth.uid()) != true THEN
+        RAISE EXCEPTION 'Only The Creator can set Content Creator rank';
     END IF;
     UPDATE public.profiles SET is_content_creator = p_status WHERE id = p_user_id;
 END;
