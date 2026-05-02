@@ -172,7 +172,7 @@ CREATE POLICY "Users can flag runs" ON public.run_flags FOR INSERT TO authentica
 DROP POLICY IF EXISTS "Creators can create tournaments" ON public.tournaments;
 CREATE POLICY "Creators can create tournaments" ON public.tournaments FOR INSERT TO authenticated WITH CHECK (
     auth.uid() = creator_id AND 
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR username = 'Login31'))
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
 );
 
 -- Service role has full access
