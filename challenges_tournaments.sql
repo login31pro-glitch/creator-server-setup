@@ -175,6 +175,30 @@ CREATE POLICY "Creators can create tournaments" ON public.tournaments FOR INSERT
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
 );
 
+-- Creator custom tournament update
+DROP POLICY IF EXISTS "Creators can update tournaments" ON public.tournaments;
+CREATE POLICY "Creators can update tournaments" ON public.tournaments FOR UPDATE TO authenticated USING (
+    auth.uid() = creator_id OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_the_creator = true)
+);
+
+-- Creator custom tournament deletion
+DROP POLICY IF EXISTS "Creators can delete tournaments" ON public.tournaments;
+CREATE POLICY "Creators can delete tournaments" ON public.tournaments FOR DELETE TO authenticated USING (
+    auth.uid() = creator_id OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_the_creator = true)
+);
+
+-- Creators can update challenges
+DROP POLICY IF EXISTS "Creators can update challenges" ON public.challenges;
+CREATE POLICY "Creators can update challenges" ON public.challenges FOR UPDATE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+
+-- Creators can delete challenges
+DROP POLICY IF EXISTS "Creators can delete challenges" ON public.challenges;
+CREATE POLICY "Creators can delete challenges" ON public.challenges FOR DELETE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+
 -- Service role has full access
 DROP POLICY IF EXISTS "Service role all access challenges" ON public.challenges;
 CREATE POLICY "Service role all access challenges" ON public.challenges FOR ALL TO service_role USING (true);
