@@ -199,6 +199,34 @@ CREATE POLICY "Creators can delete challenges" ON public.challenges FOR DELETE T
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
 );
 
+-- Creator tournament matches access
+DROP POLICY IF EXISTS "Creators can insert tournament_matches" ON public.tournament_matches;
+CREATE POLICY "Creators can insert tournament_matches" ON public.tournament_matches FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+DROP POLICY IF EXISTS "Creators can update tournament_matches" ON public.tournament_matches;
+CREATE POLICY "Creators can update tournament_matches" ON public.tournament_matches FOR UPDATE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+DROP POLICY IF EXISTS "Creators can delete tournament_matches" ON public.tournament_matches;
+CREATE POLICY "Creators can delete tournament_matches" ON public.tournament_matches FOR DELETE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+
+-- Creator tournament_rounds access
+DROP POLICY IF EXISTS "Creators can insert tournament_rounds" ON public.tournament_rounds;
+CREATE POLICY "Creators can insert tournament_rounds" ON public.tournament_rounds FOR INSERT TO authenticated WITH CHECK (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+DROP POLICY IF EXISTS "Creators can update tournament_rounds" ON public.tournament_rounds;
+CREATE POLICY "Creators can update tournament_rounds" ON public.tournament_rounds FOR UPDATE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+DROP POLICY IF EXISTS "Creators can delete tournament_rounds" ON public.tournament_rounds;
+CREATE POLICY "Creators can delete tournament_rounds" ON public.tournament_rounds FOR DELETE TO authenticated USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND (is_content_creator = true OR is_the_creator = true))
+);
+
 -- Service role has full access
 DROP POLICY IF EXISTS "Service role all access challenges" ON public.challenges;
 CREATE POLICY "Service role all access challenges" ON public.challenges FOR ALL TO service_role USING (true);
