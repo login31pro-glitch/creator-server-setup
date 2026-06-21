@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT UNIQUE NOT NULL,
   verified BOOLEAN DEFAULT false,
+  is_the_creator BOOLEAN DEFAULT false,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
@@ -15,6 +16,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='restricted_until') THEN
         ALTER TABLE public.profiles ADD COLUMN restricted_until TIMESTAMP WITH TIME ZONE;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='is_the_creator') THEN
+        ALTER TABLE public.profiles ADD COLUMN is_the_creator BOOLEAN DEFAULT false;
+    END IF;
+    
+    -- Assign The Creator role to the initial creator
+    UPDATE public.profiles SET is_the_creator = true WHERE username IN ('Login31', 'The Creator', 'The_Creator') AND is_the_creator = false;
 END $$;
 
 -- Profiles RLS
@@ -34,8 +41,8 @@ $$;
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, verified)
-  VALUES (new.id, new.raw_user_meta_data->>'username', false);
+  INSERT INTO public.profiles (id, username, verified, is_the_creator)
+  VALUES (new.id, new.raw_user_meta_data->>'username', false, (new.email = 'login31pro@gmail.com'));
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -467,14 +474,14 @@ AS $$
 DECLARE
     v_rank integer;
     v_is_banned boolean;
-    v_username text;
+    v_is_creator boolean;
 BEGIN
     IF user_id IS NULL THEN RETURN 0; END IF;
     
-    SELECT mod_rank, is_banned, username INTO v_rank, v_is_banned, v_username
+    SELECT mod_rank, is_banned, is_the_creator INTO v_rank, v_is_banned, v_is_creator
     FROM public.profiles WHERE id = user_id;
     
-    IF v_username = 'Login31' THEN
+    IF v_is_creator = true THEN
         RETURN 4; -- pseudo-rank for Creator
     END IF;
 
@@ -668,15 +675,15 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_mod_rank integer;
-    v_target_username text;
+    v_target_is_creator boolean;
 BEGIN
     v_mod_rank := public.get_user_mod_rank(auth.uid());
     IF v_mod_rank < 3 THEN RAISE EXCEPTION 'Access denied: Requires Rank 3+'; END IF;
     
     IF auth.uid() = p_target_user_id THEN RAISE EXCEPTION 'Cannot ban yourself'; END IF;
 
-    SELECT username INTO v_target_username FROM public.profiles WHERE id = p_target_user_id;
-    IF v_target_username = 'Login31' THEN RAISE EXCEPTION 'Cannot ban Creator'; END IF;
+    SELECT is_the_creator INTO v_target_is_creator FROM public.profiles WHERE id = p_target_user_id;
+    IF v_target_is_creator = true THEN RAISE EXCEPTION 'Cannot ban Creator'; END IF;
 
     UPDATE public.profiles SET is_banned = true WHERE id = p_target_user_id;
     PERFORM public.log_mod_action('ban_user', p_target_user_id, 'Instantly banned user');
@@ -708,7 +715,7 @@ SECURITY DEFINER
 AS $$
 DECLARE
     v_mod_rank integer;
-    v_target_username text;
+    v_target_is_creator boolean;
     v_current_rank integer;
 BEGIN
     v_mod_rank := public.get_user_mod_rank(auth.uid());
@@ -716,8 +723,8 @@ BEGIN
     
     IF auth.uid() = p_target_user_id THEN RAISE EXCEPTION 'Cannot alter your own rank'; END IF;
 
-    SELECT username, mod_rank INTO v_target_username, v_current_rank FROM public.profiles WHERE id = p_target_user_id;
-    IF v_target_username = 'Login31' THEN RAISE EXCEPTION 'Cannot demote/promote Creator'; END IF;
+    SELECT is_the_creator, mod_rank INTO v_target_is_creator, v_current_rank FROM public.profiles WHERE id = p_target_user_id;
+    IF v_target_is_creator = true THEN RAISE EXCEPTION 'Cannot demote/promote Creator'; END IF;
     
     -- Clear pending requests
     DELETE FROM public.mod_promotion_requests WHERE target_user_id = p_target_user_id;
@@ -1284,3 +1291,32 @@ CREATE POLICY "Users can insert their own logs" ON public.ranked_logs FOR INSERT
 
 DROP POLICY IF EXISTS "Service role can modify ranked logs" ON public.ranked_logs;
 CREATE POLICY "Service role can modify ranked logs" ON public.ranked_logs FOR ALL TO service_role USING (true);
+
+-- Protect profiles from direct client modifications
+CREATE OR REPLACE FUNCTION public.protect_profile_fields() RETURNS trigger AS $$
+BEGIN
+  -- Prevent privilege escalation from direct client updates
+  -- current_role evaluates to 'authenticated' or 'anon' when accessed via PostgREST
+  IF current_role IN ('authenticated', 'anon') THEN
+    IF NEW.is_the_creator IS DISTINCT FROM OLD.is_the_creator OR
+       NEW.mod_rank IS DISTINCT FROM OLD.mod_rank OR
+       NEW.is_banned IS DISTINCT FROM OLD.is_banned OR
+       NEW.banned_until IS DISTINCT FROM OLD.banned_until OR
+       NEW.restricted_until IS DISTINCT FROM OLD.restricted_until OR
+       NEW.warnings_count IS DISTINCT FROM OLD.warnings_count OR
+       NEW.verified IS DISTINCT FROM OLD.verified THEN
+       RAISE EXCEPTION 'You are not allowed to update restricted profile fields directly. Please use the appropriate RPC/API endpoints.';
+    END IF;
+
+    IF NEW.username IS DISTINCT FROM OLD.username AND OLD.verified = true THEN
+       RAISE EXCEPTION 'You cannot update your username directly once verified. Please use the username change request process.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS protect_profile_fields_trigger ON public.profiles;
+CREATE TRIGGER protect_profile_fields_trigger
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE PROCEDURE public.protect_profile_fields();
